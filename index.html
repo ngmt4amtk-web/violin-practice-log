@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f0f1a">
+  <title>練習記録</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="app">
+
+    <!-- ===== プール画面 ===== -->
+    <section id="view-pool" class="view active">
+      <h1 class="view-title">課題プール</h1>
+
+      <div id="pool-list" class="pool-list"></div>
+
+      <div class="pool-add">
+        <textarea id="pool-input" placeholder="課題を入力（改行で複数追加）" rows="2"></textarea>
+        <button id="pool-add-btn" class="btn btn-primary">追加</button>
+      </div>
+
+      <button id="practice-btn" class="btn btn-practice">練習スタート</button>
+      <div id="practice-indicator" class="practice-indicator hidden">
+        <span class="pulse-dot"></span> 練習中
+      </div>
+    </section>
+
+    <!-- ===== スワイプ画面 ===== -->
+    <section id="view-swipe" class="view">
+      <h1 class="view-title">仕分け</h1>
+      <p class="swipe-hint">右 = 完了 / 左 = 取り組んだ</p>
+
+      <div id="swipe-area" class="swipe-area">
+        <div id="swipe-card" class="swipe-card">
+          <span id="swipe-card-text"></span>
+        </div>
+      </div>
+
+      <div class="swipe-actions">
+        <button id="swipe-skip-btn" class="btn btn-dim">スキップ</button>
+        <button id="swipe-done-btn" class="btn btn-secondary">仕分け完了</button>
+      </div>
+
+      <div id="swipe-progress" class="swipe-progress"></div>
+    </section>
+
+    <!-- ===== 履歴画面 ===== -->
+    <section id="view-history" class="view">
+      <h1 class="view-title">履歴</h1>
+      <div id="total-time" class="total-time"></div>
+      <div id="history-list" class="history-list"></div>
+      <p id="history-empty" class="empty-msg hidden">まだ記録がありません</p>
+    </section>
+
+    <!-- ===== アーカイブ画面 ===== -->
+    <section id="view-archive" class="view">
+      <h1 class="view-title">アーカイブ</h1>
+      <div id="archive-list" class="archive-list"></div>
+      <p id="archive-empty" class="empty-msg hidden">完了した課題はまだありません</p>
+
+      <div class="archive-actions">
+        <button id="export-btn" class="btn btn-dim">エクスポート</button>
+        <button id="import-btn" class="btn btn-dim">インポート</button>
+        <input type="file" id="import-file" accept=".json" hidden>
+      </div>
+    </section>
+
+    <!-- ===== 下部タブバー ===== -->
+    <nav id="tab-bar" class="tab-bar">
+      <button class="tab active" data-view="pool">
+        <span class="tab-icon">📋</span>
+        <span class="tab-label">プール</span>
+        <span id="tab-dot-pool" class="tab-dot hidden"></span>
+      </button>
+      <button class="tab" data-view="history">
+        <span class="tab-icon">📊</span>
+        <span class="tab-label">履歴</span>
+      </button>
+      <button class="tab" data-view="archive">
+        <span class="tab-icon">✅</span>
+        <span class="tab-label">アーカイブ</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- ===== 復帰ダイアログ ===== -->
+  <div id="recover-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <p>前回の練習が完了していません。</p>
+      <p id="recover-info"></p>
+      <div class="dialog-actions">
+        <button id="recover-resume" class="btn btn-primary">再開する</button>
+        <button id="recover-discard" class="btn btn-dim">破棄する</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
