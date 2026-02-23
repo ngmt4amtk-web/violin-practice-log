@@ -236,13 +236,16 @@ textarea { resize: none; }
   color: var(--error);
 }
 
-/* ===== Pool Input (Task-app style) ===== */
+/* ===== Pool Input ===== */
 .pool-input-row {
   flex-shrink: 0;
   margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.pool-input-row input {
+.pool-input-row textarea {
   width: 100%;
   background: var(--surface);
   color: var(--text);
@@ -251,10 +254,12 @@ textarea { resize: none; }
   font-size: 15px;
   border: 1px solid var(--surface-2);
   transition: border-color 0.2s;
+  resize: none;
 }
 
-.pool-input-row input::placeholder { color: var(--text-muted); }
-.pool-input-row input:focus { border-color: var(--accent); }
+.pool-input-row textarea::placeholder { color: var(--text-muted); }
+.pool-input-row textarea:focus { border-color: var(--accent); }
+.pool-input-row .btn { width: 100%; text-align: center; }
 
 .empty-msg {
   text-align: center;
@@ -296,16 +301,26 @@ textarea { resize: none; }
 .swipe-item-bg {
   position: absolute;
   inset: 0;
-  background: var(--ok);
   display: flex;
   align-items: center;
-  padding-left: 16px;
   color: #fff;
   font-size: 14px;
   font-weight: 600;
   opacity: 0;
   pointer-events: none;
   border-radius: var(--radius-sm);
+}
+
+.swipe-item-bg.bg-right {
+  background: var(--ok);
+  padding-left: 16px;
+  justify-content: flex-start;
+}
+
+.swipe-item-bg.bg-left {
+  background: var(--warn);
+  padding-right: 16px;
+  justify-content: flex-end;
 }
 
 .swipe-item-content {

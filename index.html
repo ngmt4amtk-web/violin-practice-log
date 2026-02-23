@@ -17,7 +17,8 @@
       <h1 class="view-title">課題プール</h1>
       <div id="pool-list" class="pool-list"></div>
       <div class="pool-input-row">
-        <input id="pool-input" type="text" placeholder="課題を追加…" autocomplete="off">
+        <textarea id="pool-input" placeholder="課題を入力（改行で複数追加）" rows="3"></textarea>
+        <button id="pool-add-btn" class="btn btn-primary">追加</button>
       </div>
       <button id="practice-btn" class="btn btn-practice">練習スタート</button>
       <div id="practice-indicator" class="practice-indicator hidden">
@@ -28,7 +29,7 @@
     <!-- ===== 仕分け画面 ===== -->
     <section id="view-swipe" class="view">
       <h1 class="view-title">仕分け</h1>
-      <p class="swipe-hint">→スワイプ = 完了 ／ タップ = 取り組んだ</p>
+      <p class="swipe-hint">→ 完了 ／ ← 取り組んだ</p>
       <div id="swipe-list" class="swipe-list"></div>
       <button id="swipe-done-btn" class="btn btn-primary swipe-done-btn">仕分け完了</button>
     </section>

@@ -28,6 +28,7 @@ function cacheDom() {
     tabDotPool: $('#tab-dot-pool'),
     poolList: $('#pool-list'),
     poolInput: $('#pool-input'),
+    poolAddBtn: $('#pool-add-btn'),
     practiceBtn: $('#practice-btn'),
     practiceIndicator: $('#practice-indicator'),
     swipeList: $('#swipe-list'),
@@ -147,22 +148,24 @@ function renderPool() {
   });
 }
 
-function addPoolItem() {
+function addPoolItems() {
   const text = dom.poolInput.value.trim();
   if (!text) return;
 
-  data.pool.push({
-    id: 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-    text: text,
-    createdAt: new Date().toISOString(),
-    workedCount: 0,
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  lines.forEach(line => {
+    data.pool.push({
+      id: 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      text: line,
+      createdAt: new Date().toISOString(),
+      workedCount: 0,
+    });
   });
 
   save();
   rebuildNameMap();
   renderPool();
   dom.poolInput.value = '';
-  dom.poolInput.focus();
 }
 
 function confirmDeletePoolItem(id) {
@@ -243,7 +246,8 @@ function renderSwipeList() {
     if (isWorked) el.classList.add('worked');
 
     el.innerHTML = `
-      <div class="swipe-item-bg"><span>完了 ✓</span></div>
+      <div class="swipe-item-bg bg-right"><span>完了 ✓</span></div>
+      <div class="swipe-item-bg bg-left"><span>取り組んだ</span></div>
       <div class="swipe-item-content">
         <span class="swipe-item-text">${esc(item.text)}</span>
         ${isWorked ? '<span class="swipe-item-badge">取り組んだ</span>' : ''}
@@ -280,7 +284,8 @@ function onSwipeDragStart(e) {
   activeDrag = {
     el: item,
     content: item.querySelector('.swipe-item-content'),
-    bg: item.querySelector('.swipe-item-bg'),
+    bgRight: item.querySelector('.bg-right'),
+    bgLeft: item.querySelector('.bg-left'),
     startX: x,
     startY: getY(e),
     currentX: x,
@@ -305,38 +310,41 @@ function onSwipeDragMove(e) {
   if (e.cancelable) e.preventDefault();
 
   activeDrag.currentX = getX(e);
-  const clampedDx = Math.max(0, dx);
-  activeDrag.content.style.transform = `translateX(${clampedDx}px)`;
-  activeDrag.bg.style.opacity = Math.min(1, clampedDx / SWIPE_THRESHOLD);
+  activeDrag.content.style.transform = `translateX(${dx}px)`;
+
+  if (dx > 0) {
+    activeDrag.bgRight.style.opacity = Math.min(1, dx / SWIPE_THRESHOLD);
+    activeDrag.bgLeft.style.opacity = '0';
+  } else {
+    activeDrag.bgLeft.style.opacity = Math.min(1, -dx / SWIPE_THRESHOLD);
+    activeDrag.bgRight.style.opacity = '0';
+  }
 }
 
 function onSwipeDragEnd() {
   if (!activeDrag) return;
 
   const dx = activeDrag.currentX - activeDrag.startX;
-  const dy = (activeDrag.currentX !== activeDrag.startX || activeDrag.startY !== activeDrag.startY) ? 0 : 0;
   const item = activeDrag.el;
-  const content = activeDrag.content;
-  const bg = activeDrag.bg;
   const id = item.dataset.id;
 
   if (activeDrag.isHorizontal && dx >= SWIPE_THRESHOLD) {
     completeSwipeItem(item, id);
-  } else if (!activeDrag.dirLocked || !activeDrag.isHorizontal) {
-    // Tap: toggle worked-on
-    toggleWorkedOn(item, id);
-    resetSwipeItemPos(content, bg);
+  } else if (activeDrag.isHorizontal && dx <= -SWIPE_THRESHOLD) {
+    workedOnSwipeItem(item, id);
   } else {
-    resetSwipeItemPos(content, bg);
+    resetSwipeItemPos();
   }
 
   activeDrag = null;
 }
 
-function resetSwipeItemPos(content, bg) {
-  content.classList.add('returning');
-  content.style.transform = '';
-  bg.style.opacity = '0';
+function resetSwipeItemPos() {
+  if (!activeDrag) return;
+  activeDrag.content.classList.add('returning');
+  activeDrag.content.style.transform = '';
+  activeDrag.bgRight.style.opacity = '0';
+  activeDrag.bgLeft.style.opacity = '0';
 }
 
 function completeSwipeItem(item, id) {
@@ -364,24 +372,33 @@ function completeSwipeItem(item, id) {
   });
 }
 
-function toggleWorkedOn(item, id) {
-  const idx = swipeResults.workedOn.indexOf(id);
-  if (idx >= 0) {
-    swipeResults.workedOn.splice(idx, 1);
-    item.classList.remove('worked');
-    const badge = item.querySelector('.swipe-item-badge');
-    if (badge) badge.remove();
-  } else {
+function workedOnSwipeItem(item, id) {
+  if (!swipeResults.workedOn.includes(id)) {
     swipeResults.workedOn.push(id);
+  }
+
+  const content = item.querySelector('.swipe-item-content');
+
+  // Animate: snap left briefly, then bounce back with orange border
+  content.style.transition = 'transform 0.2s ease-out';
+  content.style.transform = 'translateX(-40px)';
+
+  setTimeout(() => {
+    content.style.transition = 'transform 0.25s ease';
+    content.style.transform = '';
     item.classList.add('worked');
-    const content = item.querySelector('.swipe-item-content');
+
     if (!content.querySelector('.swipe-item-badge')) {
       const badge = document.createElement('span');
       badge.className = 'swipe-item-badge';
       badge.textContent = '取り組んだ';
       content.appendChild(badge);
     }
-  }
+
+    // Reset bg
+    item.querySelector('.bg-left').style.opacity = '0';
+    item.querySelector('.bg-right').style.opacity = '0';
+  }, 200);
 }
 
 function finishSwipe() {
@@ -643,9 +660,7 @@ function bindEvents() {
     switchView(tab.dataset.view);
   });
 
-  dom.poolInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); addPoolItem(); }
-  });
+  dom.poolAddBtn.addEventListener('click', addPoolItems);
 
   dom.poolList.addEventListener('click', (e) => {
     const btn = e.target.closest('.pool-item-delete');
