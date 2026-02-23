@@ -2,57 +2,55 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-/* ===== State ===== */
+/* ===== Constants ===== */
 const STORAGE_KEY = 'violin-practice-log';
+const SESSION_KEY = 'violin-practice-active';
+const SWIPE_THRESHOLD = 80;
 
+/* ===== State ===== */
 let data = { version: 1, pool: [], sessions: [], archive: [] };
-let activeSession = null;   // { id, startedAt } — persisted to sessionStorage
-let swipeQueue = [];         // pool items to swipe through
-let swipeIndex = 0;
+let activeSession = null;
 let swipeResults = { completed: [], workedOn: [] };
+let undoTimer = null;
+let nameMap = new Map();
 
 /* ===== DOM Cache ===== */
 let dom = {};
 
 function cacheDom() {
   dom = {
-    // Views
     viewPool: $('#view-pool'),
     viewSwipe: $('#view-swipe'),
     viewHistory: $('#view-history'),
     viewArchive: $('#view-archive'),
-    // Tabs
     tabBar: $('#tab-bar'),
     tabs: $$('.tab'),
     tabDotPool: $('#tab-dot-pool'),
-    // Pool
     poolList: $('#pool-list'),
     poolInput: $('#pool-input'),
-    poolAddBtn: $('#pool-add-btn'),
     practiceBtn: $('#practice-btn'),
     practiceIndicator: $('#practice-indicator'),
-    // Swipe
-    swipeArea: $('#swipe-area'),
-    swipeCard: $('#swipe-card'),
-    swipeCardText: $('#swipe-card-text'),
-    swipeSkipBtn: $('#swipe-skip-btn'),
+    swipeList: $('#swipe-list'),
     swipeDoneBtn: $('#swipe-done-btn'),
-    swipeProgress: $('#swipe-progress'),
-    // History
     totalTime: $('#total-time'),
     historyList: $('#history-list'),
     historyEmpty: $('#history-empty'),
-    // Archive
     archiveList: $('#archive-list'),
     archiveEmpty: $('#archive-empty'),
     exportBtn: $('#export-btn'),
     importBtn: $('#import-btn'),
     importFile: $('#import-file'),
-    // Recover
     recoverDialog: $('#recover-dialog'),
     recoverInfo: $('#recover-info'),
     recoverResume: $('#recover-resume'),
     recoverDiscard: $('#recover-discard'),
+    confirmDialog: $('#confirm-dialog'),
+    confirmMsg: $('#confirm-msg'),
+    confirmOk: $('#confirm-ok'),
+    confirmCancel: $('#confirm-cancel'),
+    undoToast: $('#undo-toast'),
+    undoToastMsg: $('#undo-toast-msg'),
+    undoToastBtn: $('#undo-toast-btn'),
   };
 }
 
@@ -65,34 +63,59 @@ function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) data = JSON.parse(raw);
+    data.pool.forEach(p => { if (p.workedCount == null) p.workedCount = 0; });
   } catch (e) { /* use default */ }
 }
 
-function saveSession() {
+function saveActiveSession() {
   if (activeSession) {
-    sessionStorage.setItem('practice-active', JSON.stringify(activeSession));
+    localStorage.setItem(SESSION_KEY, JSON.stringify(activeSession));
   } else {
-    sessionStorage.removeItem('practice-active');
+    localStorage.removeItem(SESSION_KEY);
   }
 }
 
-function loadSession() {
+function loadActiveSession() {
   try {
-    const raw = sessionStorage.getItem('practice-active');
+    const raw = localStorage.getItem(SESSION_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) { /* ignore */ }
   return null;
 }
 
+/* ===== Name Map ===== */
+function rebuildNameMap() {
+  nameMap.clear();
+  data.pool.forEach(p => nameMap.set(p.id, p.text));
+  data.archive.forEach(a => nameMap.set(a.id, a.text));
+}
+
+function getItemName(pid) {
+  return nameMap.get(pid) || '(削除済み)';
+}
+
+/* ===== HTML Escaping ===== */
+const _escDiv = document.createElement('div');
+
+function esc(str) {
+  _escDiv.textContent = str;
+  return _escDiv.innerHTML;
+}
+
+function escAttr(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /* ===== Tab Navigation ===== */
 function switchView(name) {
-  // Don't allow switching to swipe directly from tab bar
-  const views = { pool: dom.viewPool, history: dom.viewHistory, archive: dom.viewArchive, swipe: dom.viewSwipe };
+  const views = {
+    pool: dom.viewPool, history: dom.viewHistory,
+    archive: dom.viewArchive, swipe: dom.viewSwipe,
+  };
   Object.values(views).forEach(v => v.classList.remove('active'));
   views[name].classList.add('active');
-
   dom.tabs.forEach(t => t.classList.toggle('active', t.dataset.view === name));
-
   if (name === 'history') renderHistory();
   if (name === 'archive') renderArchive();
 }
@@ -110,37 +133,59 @@ function renderPool() {
   data.pool.forEach(item => {
     const el = document.createElement('div');
     el.className = 'pool-item';
+    el.dataset.id = item.id;
+
+    const badge = (item.workedCount || 0) > 0
+      ? `<span class="pool-badge">${item.workedCount}</span>` : '';
+
     el.innerHTML = `
+      ${badge}
       <span class="pool-item-text">${esc(item.text)}</span>
-      <button class="pool-item-delete" data-id="${item.id}">&times;</button>
+      <button class="pool-item-delete" data-id="${escAttr(item.id)}">&times;</button>
     `;
     list.appendChild(el);
   });
 }
 
-function addPoolItems() {
+function addPoolItem() {
   const text = dom.poolInput.value.trim();
   if (!text) return;
 
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  lines.forEach(line => {
-    data.pool.push({
-      id: 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-      text: line,
-      createdAt: new Date().toISOString(),
-    });
+  data.pool.push({
+    id: 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    text: text,
+    createdAt: new Date().toISOString(),
+    workedCount: 0,
   });
 
   save();
+  rebuildNameMap();
   renderPool();
   dom.poolInput.value = '';
-  dom.poolInput.style.height = 'auto';
+  dom.poolInput.focus();
 }
 
-function deletePoolItem(id) {
-  data.pool = data.pool.filter(p => p.id !== id);
-  save();
-  renderPool();
+function confirmDeletePoolItem(id) {
+  const item = data.pool.find(p => p.id === id);
+  if (!item) return;
+  showConfirm(`「${item.text}」を削除しますか？`, () => {
+    data.pool = data.pool.filter(p => p.id !== id);
+    save();
+    renderPool();
+  });
+}
+
+/* ===== Confirm Dialog ===== */
+function showConfirm(msg, onOk) {
+  dom.confirmMsg.textContent = msg;
+  dom.confirmDialog.classList.remove('hidden');
+  dom.confirmOk.onclick = () => {
+    dom.confirmDialog.classList.add('hidden');
+    onOk();
+  };
+  dom.confirmCancel.onclick = () => {
+    dom.confirmDialog.classList.add('hidden');
+  };
 }
 
 /* ===== Practice Start / Stop ===== */
@@ -149,20 +194,16 @@ function startPractice() {
     id: 's_' + Date.now(),
     startedAt: new Date().toISOString(),
   };
-  saveSession();
+  saveActiveSession();
   updatePracticeUI();
 }
 
 function stopPractice() {
   if (!activeSession) return;
-
-  const endedAt = new Date().toISOString();
-  const duration = Math.round((new Date(endedAt) - new Date(activeSession.startedAt)) / 1000);
-
-  activeSession.endedAt = endedAt;
-  activeSession.duration = duration;
-
-  // Enter swipe mode
+  activeSession.endedAt = new Date().toISOString();
+  activeSession.duration = Math.round(
+    (new Date(activeSession.endedAt) - new Date(activeSession.startedAt)) / 1000
+  );
   beginSwipe();
 }
 
@@ -171,186 +212,229 @@ function updatePracticeUI() {
   dom.practiceBtn.textContent = running ? '練習ストップ' : '練習スタート';
   dom.practiceBtn.classList.toggle('recording', running);
   dom.practiceIndicator.classList.toggle('hidden', !running);
-
-  // Red dot on pool tab when practicing and on another view
   dom.tabDotPool.classList.toggle('hidden', !running);
 }
 
-/* ===== Swipe ===== */
+/* ===== Swipe (List-based) ===== */
 function beginSwipe() {
-  swipeQueue = [...data.pool];
-  swipeIndex = 0;
   swipeResults = { completed: [], workedOn: [] };
 
-  if (swipeQueue.length === 0) {
+  if (data.pool.length === 0) {
     finishSwipe();
     return;
   }
 
   switchView('swipe');
-  showSwipeCard();
+  renderSwipeList();
 }
 
-function showSwipeCard() {
-  if (swipeIndex >= swipeQueue.length) {
-    showSwipeEmpty();
-    return;
+function renderSwipeList() {
+  const list = dom.swipeList;
+  list.innerHTML = '';
+
+  data.pool.forEach(item => {
+    if (swipeResults.completed.includes(item.id)) return;
+
+    const el = document.createElement('div');
+    el.className = 'swipe-item';
+    el.dataset.id = item.id;
+
+    const isWorked = swipeResults.workedOn.includes(item.id);
+    if (isWorked) el.classList.add('worked');
+
+    el.innerHTML = `
+      <div class="swipe-item-bg"><span>完了 ✓</span></div>
+      <div class="swipe-item-content">
+        <span class="swipe-item-text">${esc(item.text)}</span>
+        ${isWorked ? '<span class="swipe-item-badge">取り組んだ</span>' : ''}
+      </div>
+    `;
+    list.appendChild(el);
+  });
+}
+
+/* ===== Swipe Gestures (delegated on swipe-list) ===== */
+let activeDrag = null;
+
+function initSwipeGestures() {
+  const list = dom.swipeList;
+  list.addEventListener('touchstart', onSwipeDragStart, { passive: true });
+  list.addEventListener('touchmove', onSwipeDragMove, { passive: false });
+  list.addEventListener('touchend', onSwipeDragEnd);
+  list.addEventListener('mousedown', onSwipeDragStart);
+  window.addEventListener('mousemove', onSwipeDragMove);
+  window.addEventListener('mouseup', onSwipeDragEnd);
+}
+
+function getX(e) { return e.touches ? e.touches[0].clientX : e.clientX; }
+function getY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
+
+function onSwipeDragStart(e) {
+  const item = e.target.closest('.swipe-item');
+  if (!item || item.classList.contains('removing')) return;
+
+  const x = getX(e);
+  // Avoid conflict with iOS browser back gesture
+  if (x < 30) return;
+
+  activeDrag = {
+    el: item,
+    content: item.querySelector('.swipe-item-content'),
+    bg: item.querySelector('.swipe-item-bg'),
+    startX: x,
+    startY: getY(e),
+    currentX: x,
+    dirLocked: false,
+    isHorizontal: null,
+  };
+  activeDrag.content.classList.remove('returning');
+}
+
+function onSwipeDragMove(e) {
+  if (!activeDrag) return;
+
+  const dx = getX(e) - activeDrag.startX;
+  const dy = getY(e) - activeDrag.startY;
+
+  if (!activeDrag.dirLocked && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+    activeDrag.isHorizontal = Math.abs(dx) > Math.abs(dy);
+    activeDrag.dirLocked = true;
   }
 
-  const item = swipeQueue[swipeIndex];
-  dom.swipeCardText.textContent = item.text;
-  dom.swipeCard.className = 'swipe-card';
-  dom.swipeCard.style.transform = '';
-  dom.swipeCard.style.borderColor = '';
-  dom.swipeProgress.textContent = `${swipeIndex + 1} / ${swipeQueue.length}`;
+  if (!activeDrag.isHorizontal) return;
+  if (e.cancelable) e.preventDefault();
+
+  activeDrag.currentX = getX(e);
+  const clampedDx = Math.max(0, dx);
+  activeDrag.content.style.transform = `translateX(${clampedDx}px)`;
+  activeDrag.bg.style.opacity = Math.min(1, clampedDx / SWIPE_THRESHOLD);
 }
 
-function showSwipeEmpty() {
-  dom.swipeCardText.textContent = 'すべて仕分け済み';
-  dom.swipeCard.className = 'swipe-card empty';
-  dom.swipeCard.style.transform = '';
-  dom.swipeCard.style.borderColor = '';
-  dom.swipeProgress.textContent = '';
+function onSwipeDragEnd() {
+  if (!activeDrag) return;
+
+  const dx = activeDrag.currentX - activeDrag.startX;
+  const dy = (activeDrag.currentX !== activeDrag.startX || activeDrag.startY !== activeDrag.startY) ? 0 : 0;
+  const item = activeDrag.el;
+  const content = activeDrag.content;
+  const bg = activeDrag.bg;
+  const id = item.dataset.id;
+
+  if (activeDrag.isHorizontal && dx >= SWIPE_THRESHOLD) {
+    completeSwipeItem(item, id);
+  } else if (!activeDrag.dirLocked || !activeDrag.isHorizontal) {
+    // Tap: toggle worked-on
+    toggleWorkedOn(item, id);
+    resetSwipeItemPos(content, bg);
+  } else {
+    resetSwipeItemPos(content, bg);
+  }
+
+  activeDrag = null;
 }
 
-function swipeRight() {
-  const item = swipeQueue[swipeIndex];
-  if (!item) return;
-  swipeResults.completed.push(item.id);
-  flyCard('right', () => { swipeIndex++; showSwipeCard(); });
+function resetSwipeItemPos(content, bg) {
+  content.classList.add('returning');
+  content.style.transform = '';
+  bg.style.opacity = '0';
 }
 
-function swipeLeft() {
-  const item = swipeQueue[swipeIndex];
-  if (!item) return;
-  swipeResults.workedOn.push(item.id);
-  flyCard('left', () => { swipeIndex++; showSwipeCard(); });
-}
+function completeSwipeItem(item, id) {
+  swipeResults.workedOn = swipeResults.workedOn.filter(x => x !== id);
+  swipeResults.completed.push(id);
 
-function swipeSkip() {
-  if (swipeIndex >= swipeQueue.length) return;
-  // No animation, just advance
-  swipeIndex++;
-  showSwipeCard();
-}
+  const content = item.querySelector('.swipe-item-content');
+  content.style.transition = 'transform 0.3s ease-out';
+  content.style.transform = 'translateX(110%)';
+  item.classList.add('removing');
 
-function flyCard(direction, cb) {
-  const card = dom.swipeCard;
-  card.classList.add(direction === 'right' ? 'fly-right' : 'fly-left');
   setTimeout(() => {
-    card.classList.remove('fly-right', 'fly-left');
-    cb();
-  }, 350);
+    item.style.maxHeight = item.offsetHeight + 'px';
+    // Force reflow
+    item.offsetHeight;
+    item.classList.add('removing');
+  }, 250);
+
+  setTimeout(() => { item.remove(); }, 500);
+
+  const itemData = data.pool.find(p => p.id === id);
+  showUndo(`「${itemData?.text || ''}」を完了`, () => {
+    swipeResults.completed = swipeResults.completed.filter(x => x !== id);
+    renderSwipeList();
+  });
+}
+
+function toggleWorkedOn(item, id) {
+  const idx = swipeResults.workedOn.indexOf(id);
+  if (idx >= 0) {
+    swipeResults.workedOn.splice(idx, 1);
+    item.classList.remove('worked');
+    const badge = item.querySelector('.swipe-item-badge');
+    if (badge) badge.remove();
+  } else {
+    swipeResults.workedOn.push(id);
+    item.classList.add('worked');
+    const content = item.querySelector('.swipe-item-content');
+    if (!content.querySelector('.swipe-item-badge')) {
+      const badge = document.createElement('span');
+      badge.className = 'swipe-item-badge';
+      badge.textContent = '取り組んだ';
+      content.appendChild(badge);
+    }
+  }
 }
 
 function finishSwipe() {
-  // Build session
   const session = {
     id: activeSession.id,
     startedAt: activeSession.startedAt,
-    endedAt: activeSession.endedAt,
-    duration: activeSession.duration,
-    completed: swipeResults.completed,
-    workedOn: swipeResults.workedOn,
+    endedAt: activeSession.endedAt || new Date().toISOString(),
+    duration: activeSession.duration || 0,
+    completed: [...swipeResults.completed],
+    workedOn: [...swipeResults.workedOn],
     note: '',
   };
 
   data.sessions.unshift(session);
 
-  // Move completed items to archive
   swipeResults.completed.forEach(pid => {
     const item = data.pool.find(p => p.id === pid);
     if (item) {
       data.archive.push({
-        id: item.id,
-        text: item.text,
+        id: item.id, text: item.text,
         completedAt: new Date().toISOString(),
       });
     }
   });
   data.pool = data.pool.filter(p => !swipeResults.completed.includes(p.id));
 
+  swipeResults.workedOn.forEach(pid => {
+    const item = data.pool.find(p => p.id === pid);
+    if (item) item.workedCount = (item.workedCount || 0) + 1;
+  });
+
   save();
+  rebuildNameMap();
   activeSession = null;
-  saveSession();
+  saveActiveSession();
   updatePracticeUI();
   renderPool();
+  hideUndo();
   switchView('history');
 }
 
-/* ===== Swipe Gesture (Touch + Mouse) ===== */
-let dragState = null;
-
-function initSwipeGestures() {
-  const card = dom.swipeCard;
-  const area = dom.swipeArea;
-
-  // Touch
-  area.addEventListener('touchstart', onDragStart, { passive: true });
-  area.addEventListener('touchmove', onDragMove, { passive: false });
-  area.addEventListener('touchend', onDragEnd);
-
-  // Mouse
-  area.addEventListener('mousedown', onDragStart);
-  window.addEventListener('mousemove', onDragMove);
-  window.addEventListener('mouseup', onDragEnd);
+/* ===== Undo Toast ===== */
+function showUndo(msg, callback) {
+  clearTimeout(undoTimer);
+  dom.undoToastMsg.textContent = msg;
+  dom.undoToast.classList.remove('hidden');
+  dom.undoToastBtn.onclick = () => { callback(); hideUndo(); };
+  undoTimer = setTimeout(hideUndo, 4000);
 }
 
-function getPointerX(e) {
-  if (e.touches) return e.touches[0].clientX;
-  return e.clientX;
-}
-
-function onDragStart(e) {
-  if (swipeIndex >= swipeQueue.length) return;
-  if (dom.swipeCard.classList.contains('fly-right') || dom.swipeCard.classList.contains('fly-left')) return;
-
-  const x = getPointerX(e);
-  dragState = { startX: x, currentX: x };
-  dom.swipeCard.classList.remove('returning');
-}
-
-function onDragMove(e) {
-  if (!dragState) return;
-  if (e.cancelable) e.preventDefault();
-
-  dragState.currentX = getPointerX(e);
-  const dx = dragState.currentX - dragState.startX;
-  const rotation = dx * 0.08;
-  const maxRot = 25;
-  const clampedRot = Math.max(-maxRot, Math.min(maxRot, rotation));
-
-  dom.swipeCard.style.transform = `translateX(${dx}px) rotate(${clampedRot}deg)`;
-
-  // Color feedback
-  const threshold = 60;
-  if (dx > threshold) {
-    dom.swipeCard.style.borderColor = `var(--ok)`;
-  } else if (dx < -threshold) {
-    dom.swipeCard.style.borderColor = `var(--warn)`;
-  } else {
-    dom.swipeCard.style.borderColor = '';
-  }
-}
-
-function onDragEnd() {
-  if (!dragState) return;
-
-  const dx = dragState.currentX - dragState.startX;
-  const swipeThreshold = 100;
-
-  if (dx > swipeThreshold) {
-    swipeRight();
-  } else if (dx < -swipeThreshold) {
-    swipeLeft();
-  } else {
-    // Return to center
-    dom.swipeCard.classList.add('returning');
-    dom.swipeCard.style.transform = '';
-    dom.swipeCard.style.borderColor = '';
-  }
-
-  dragState = null;
+function hideUndo() {
+  clearTimeout(undoTimer);
+  dom.undoToast.classList.add('hidden');
 }
 
 /* ===== History ===== */
@@ -366,7 +450,6 @@ function renderHistory() {
 
   dom.historyEmpty.classList.add('hidden');
 
-  // Total time
   const totalSec = data.sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
   dom.totalTime.textContent = `累計練習時間: ${formatDuration(totalSec)}`;
 
@@ -374,43 +457,36 @@ function renderHistory() {
     const card = document.createElement('div');
     card.className = 'session-card';
 
-    const completedTags = (session.completed || []).map(pid => {
-      const name = findItemName(pid);
-      return `<span class="session-tag completed">${esc(name)}</span>`;
-    }).join('');
+    const completedTags = (session.completed || []).map(pid =>
+      `<span class="session-tag completed">${esc(getItemName(pid))}</span>`
+    ).join('');
 
-    const workedTags = (session.workedOn || []).map(pid => {
-      const name = findItemName(pid);
-      return `<span class="session-tag worked">${esc(name)}</span>`;
-    }).join('');
-
-    const summary = buildSummary(session);
+    const workedTags = (session.workedOn || []).map(pid =>
+      `<span class="session-tag worked">${esc(getItemName(pid))}</span>`
+    ).join('');
 
     card.innerHTML = `
       <div class="session-header">
         <span class="session-date">${formatDate(session.startedAt)}</span>
         <span class="session-duration">${formatDuration(session.duration)}</span>
       </div>
-      <div class="session-summary">${summary}</div>
-      <div>${completedTags}${workedTags}</div>
+      <div class="session-summary">${buildSummary(session)}</div>
+      <div class="session-tags">${completedTags}${workedTags}</div>
       <textarea class="session-note" placeholder="メモ" rows="1"
-        data-session-id="${session.id}">${esc(session.note || '')}</textarea>
+        data-session-id="${escAttr(session.id)}">${esc(session.note || '')}</textarea>
+      <button class="session-delete" data-session-id="${escAttr(session.id)}">&times;</button>
     `;
 
     list.appendChild(card);
   });
 
-  // Auto-resize and blur-save for note textareas
   list.querySelectorAll('.session-note').forEach(ta => {
     autoResize(ta);
     ta.addEventListener('input', () => autoResize(ta));
     ta.addEventListener('blur', () => {
       const sid = ta.dataset.sessionId;
       const session = data.sessions.find(s => s.id === sid);
-      if (session) {
-        session.note = ta.value;
-        save();
-      }
+      if (session) { session.note = ta.value; save(); }
     });
   });
 }
@@ -421,16 +497,15 @@ function buildSummary(session) {
   const parts = [];
   if (c > 0) parts.push(`${c}件 完了`);
   if (w > 0) parts.push(`${w}件 取り組み`);
-  if (parts.length === 0) return '記録のみ';
-  return parts.join('、');
+  return parts.length === 0 ? '記録のみ' : parts.join('、');
 }
 
-function findItemName(pid) {
-  const inPool = data.pool.find(p => p.id === pid);
-  if (inPool) return inPool.text;
-  const inArchive = data.archive.find(a => a.id === pid);
-  if (inArchive) return inArchive.text;
-  return '(削除済み)';
+function deleteSession(id) {
+  showConfirm('このセッションを削除しますか？', () => {
+    data.sessions = data.sessions.filter(s => s.id !== id);
+    save();
+    renderHistory();
+  });
 }
 
 /* ===== Archive ===== */
@@ -445,7 +520,6 @@ function renderArchive() {
 
   dom.archiveEmpty.classList.add('hidden');
 
-  // Show newest first
   [...data.archive].reverse().forEach(item => {
     const el = document.createElement('div');
     el.className = 'archive-item';
@@ -465,13 +539,11 @@ function exportData() {
     exportedAt: new Date().toISOString(),
     data: { pool: data.pool, sessions: data.sessions, archive: data.archive },
   };
-
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const dateStr = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `practice-log_${dateStr}.json`;
+  a.download = `practice-log_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -486,11 +558,12 @@ function importData(file) {
         return;
       }
       if (!confirm('現在のデータを上書きしますか？')) return;
-
       data.pool = payload.data.pool || [];
       data.sessions = payload.data.sessions || [];
       data.archive = payload.data.archive || [];
+      data.pool.forEach(p => { if (p.workedCount == null) p.workedCount = 0; });
       save();
+      rebuildNameMap();
       renderPool();
       renderHistory();
       renderArchive();
@@ -504,11 +577,10 @@ function importData(file) {
 
 /* ===== Session Recovery ===== */
 function checkRecovery() {
-  const saved = loadSession();
+  const saved = loadActiveSession();
   if (!saved) return;
 
-  const started = new Date(saved.startedAt);
-  const elapsed = Math.round((Date.now() - started.getTime()) / 1000);
+  const elapsed = Math.round((Date.now() - new Date(saved.startedAt).getTime()) / 1000);
   dom.recoverInfo.textContent = `開始: ${formatDate(saved.startedAt)}（${formatDuration(elapsed)} 経過）`;
   dom.recoverDialog.classList.remove('hidden');
 
@@ -520,19 +592,13 @@ function checkRecovery() {
 
   dom.recoverDiscard.onclick = () => {
     activeSession = null;
-    saveSession();
+    saveActiveSession();
     dom.recoverDialog.classList.add('hidden');
     updatePracticeUI();
   };
 }
 
 /* ===== Helpers ===== */
-function esc(str) {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
-}
-
 function formatDuration(sec) {
   if (!sec || sec < 0) return '0分';
   const h = Math.floor(sec / 3600);
@@ -553,9 +619,7 @@ function formatDate(iso) {
 
 function formatShortDate(iso) {
   const d = new Date(iso);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${mm}/${dd}`;
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function autoResize(ta) {
@@ -563,47 +627,45 @@ function autoResize(ta) {
   ta.style.height = ta.scrollHeight + 'px';
 }
 
+/* ===== beforeunload ===== */
+window.addEventListener('beforeunload', (e) => {
+  if (activeSession) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 /* ===== Event Bindings ===== */
 function bindEvents() {
-  // Tab bar
   dom.tabBar.addEventListener('click', (e) => {
     const tab = e.target.closest('.tab');
     if (!tab) return;
     switchView(tab.dataset.view);
   });
 
-  // Pool add
-  dom.poolAddBtn.addEventListener('click', addPoolItems);
   dom.poolInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      addPoolItems();
-    }
+    if (e.key === 'Enter') { e.preventDefault(); addPoolItem(); }
   });
 
-  // Pool delete (delegated)
   dom.poolList.addEventListener('click', (e) => {
     const btn = e.target.closest('.pool-item-delete');
-    if (btn) deletePoolItem(btn.dataset.id);
+    if (btn) confirmDeletePoolItem(btn.dataset.id);
   });
 
-  // Practice start/stop
   dom.practiceBtn.addEventListener('click', () => {
-    if (activeSession) {
-      stopPractice();
-    } else {
-      startPractice();
-    }
+    if (activeSession) stopPractice();
+    else startPractice();
   });
 
-  // Swipe buttons
-  dom.swipeSkipBtn.addEventListener('click', swipeSkip);
   dom.swipeDoneBtn.addEventListener('click', finishSwipe);
 
-  // Swipe gestures
   initSwipeGestures();
 
-  // Export / Import
+  dom.historyList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.session-delete');
+    if (btn) deleteSession(btn.dataset.sessionId);
+  });
+
   dom.exportBtn.addEventListener('click', exportData);
   dom.importBtn.addEventListener('click', () => dom.importFile.click());
   dom.importFile.addEventListener('change', (e) => {
@@ -616,6 +678,7 @@ function bindEvents() {
 document.addEventListener('DOMContentLoaded', () => {
   cacheDom();
   load();
+  rebuildNameMap();
   bindEvents();
   renderPool();
   updatePracticeUI();

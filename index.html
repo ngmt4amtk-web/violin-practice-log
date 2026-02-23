@@ -15,37 +15,22 @@
     <!-- ===== プール画面 ===== -->
     <section id="view-pool" class="view active">
       <h1 class="view-title">課題プール</h1>
-
       <div id="pool-list" class="pool-list"></div>
-
-      <div class="pool-add">
-        <textarea id="pool-input" placeholder="課題を入力（改行で複数追加）" rows="2"></textarea>
-        <button id="pool-add-btn" class="btn btn-primary">追加</button>
+      <div class="pool-input-row">
+        <input id="pool-input" type="text" placeholder="課題を追加…" autocomplete="off">
       </div>
-
       <button id="practice-btn" class="btn btn-practice">練習スタート</button>
       <div id="practice-indicator" class="practice-indicator hidden">
         <span class="pulse-dot"></span> 練習中
       </div>
     </section>
 
-    <!-- ===== スワイプ画面 ===== -->
+    <!-- ===== 仕分け画面 ===== -->
     <section id="view-swipe" class="view">
       <h1 class="view-title">仕分け</h1>
-      <p class="swipe-hint">右 = 完了 / 左 = 取り組んだ</p>
-
-      <div id="swipe-area" class="swipe-area">
-        <div id="swipe-card" class="swipe-card">
-          <span id="swipe-card-text"></span>
-        </div>
-      </div>
-
-      <div class="swipe-actions">
-        <button id="swipe-skip-btn" class="btn btn-dim">スキップ</button>
-        <button id="swipe-done-btn" class="btn btn-secondary">仕分け完了</button>
-      </div>
-
-      <div id="swipe-progress" class="swipe-progress"></div>
+      <p class="swipe-hint">→スワイプ = 完了 ／ タップ = 取り組んだ</p>
+      <div id="swipe-list" class="swipe-list"></div>
+      <button id="swipe-done-btn" class="btn btn-primary swipe-done-btn">仕分け完了</button>
     </section>
 
     <!-- ===== 履歴画面 ===== -->
@@ -61,7 +46,6 @@
       <h1 class="view-title">アーカイブ</h1>
       <div id="archive-list" class="archive-list"></div>
       <p id="archive-empty" class="empty-msg hidden">完了した課題はまだありません</p>
-
       <div class="archive-actions">
         <button id="export-btn" class="btn btn-dim">エクスポート</button>
         <button id="import-btn" class="btn btn-dim">インポート</button>
@@ -72,20 +56,19 @@
     <!-- ===== 下部タブバー ===== -->
     <nav id="tab-bar" class="tab-bar">
       <button class="tab active" data-view="pool">
-        <span class="tab-icon">📋</span>
+        <svg class="tab-icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
         <span class="tab-label">プール</span>
         <span id="tab-dot-pool" class="tab-dot hidden"></span>
       </button>
       <button class="tab" data-view="history">
-        <span class="tab-icon">📊</span>
+        <svg class="tab-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
         <span class="tab-label">履歴</span>
       </button>
       <button class="tab" data-view="archive">
-        <span class="tab-icon">✅</span>
+        <svg class="tab-icon" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         <span class="tab-label">アーカイブ</span>
       </button>
     </nav>
-
   </div>
 
   <!-- ===== 復帰ダイアログ ===== -->
@@ -98,6 +81,23 @@
         <button id="recover-discard" class="btn btn-dim">破棄する</button>
       </div>
     </div>
+  </div>
+
+  <!-- ===== 確認ダイアログ ===== -->
+  <div id="confirm-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <p id="confirm-msg"></p>
+      <div class="dialog-actions">
+        <button id="confirm-ok" class="btn btn-primary">削除</button>
+        <button id="confirm-cancel" class="btn btn-dim">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Undo トースト ===== -->
+  <div id="undo-toast" class="undo-toast hidden">
+    <span id="undo-toast-msg"></span>
+    <button id="undo-toast-btn" class="undo-btn">元に戻す</button>
   </div>
 
   <script src="app.js"></script>

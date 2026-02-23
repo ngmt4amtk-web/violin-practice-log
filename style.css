@@ -30,7 +30,7 @@ html, body {
   overscroll-behavior: none;
 }
 
-button, textarea {
+button, input, textarea {
   font-family: inherit;
   border: none;
   outline: none;
@@ -40,11 +40,12 @@ button, textarea {
 
 button { cursor: pointer; }
 
-textarea {
+input, textarea {
   -webkit-user-select: text;
   user-select: text;
-  resize: none;
 }
+
+textarea { resize: none; }
 
 /* ===== App Container ===== */
 .app {
@@ -105,7 +106,7 @@ textarea {
 
 .tab.active { color: var(--accent); }
 
-.tab-icon { font-size: 20px; line-height: 1; }
+.tab-icon { width: 22px; height: 22px; }
 .tab-label { font-weight: 500; }
 
 .tab-dot {
@@ -131,20 +132,9 @@ textarea {
 
 .btn:active { opacity: 0.7; }
 
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-}
-
-.btn-secondary {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.btn-dim {
-  background: var(--surface);
-  color: var(--text-dim);
-}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--surface-2); color: var(--text); }
+.btn-dim { background: var(--surface); color: var(--text-dim); }
 
 .btn-practice {
   width: 100%;
@@ -157,9 +147,7 @@ textarea {
   flex-shrink: 0;
 }
 
-.btn-practice.recording {
-  background: var(--error);
-}
+.btn-practice.recording { background: var(--error); }
 
 /* ===== Practice Indicator ===== */
 .practice-indicator {
@@ -209,6 +197,20 @@ textarea {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.pool-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(245, 166, 35, 0.2);
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .pool-item-text {
   flex: 1;
   font-size: 15px;
@@ -234,30 +236,25 @@ textarea {
   color: var(--error);
 }
 
-.pool-add {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
+/* ===== Pool Input (Task-app style) ===== */
+.pool-input-row {
   flex-shrink: 0;
+  margin-top: 8px;
 }
 
-.pool-add textarea {
-  flex: 1;
+.pool-input-row input {
+  width: 100%;
   background: var(--surface);
   color: var(--text);
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
   font-size: 15px;
   border: 1px solid var(--surface-2);
+  transition: border-color 0.2s;
 }
 
-.pool-add textarea::placeholder { color: var(--text-muted); }
-
-.pool-add textarea:focus {
-  border-color: var(--accent);
-}
-
-.pool-add .btn { flex-shrink: 0; align-self: flex-end; }
+.pool-input-row input::placeholder { color: var(--text-muted); }
+.pool-input-row input:focus { border-color: var(--accent); }
 
 .empty-msg {
   text-align: center;
@@ -266,86 +263,94 @@ textarea {
   padding: 32px 0;
 }
 
-/* ===== Swipe ===== */
+/* ===== Swipe List ===== */
 .swipe-hint {
   text-align: center;
   font-size: 13px;
   color: var(--text-dim);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   flex-shrink: 0;
 }
 
-.swipe-area {
+.swipe-list {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.swipe-item {
   position: relative;
-  min-height: 200px;
-  touch-action: pan-y;
+  overflow: hidden;
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm);
 }
 
-.swipe-card {
-  width: 85%;
-  max-width: 340px;
-  min-height: 160px;
-  background: var(--surface);
-  border: 2px solid var(--surface-3);
-  border-radius: 16px;
+.swipe-item.removing {
+  transition: max-height 0.25s ease, opacity 0.25s ease, margin 0.25s ease;
+  max-height: 0 !important;
+  opacity: 0;
+  margin-bottom: 0;
+}
+
+.swipe-item-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--ok);
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
-  font-size: 20px;
+  padding-left: 16px;
+  color: #fff;
+  font-size: 14px;
   font-weight: 600;
-  text-align: center;
-  word-break: break-word;
-  position: absolute;
-  cursor: grab;
-  transition: none;
-  will-change: transform;
-}
-
-.swipe-card.returning {
-  transition: transform 0.3s ease, border-color 0.3s ease;
-}
-
-.swipe-card.fly-right {
-  transition: transform 0.35s ease-out, opacity 0.35s ease-out;
-  transform: translateX(120vw) rotate(30deg) !important;
   opacity: 0;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
 }
 
-.swipe-card.fly-left {
-  transition: transform 0.35s ease-out, opacity 0.35s ease-out;
-  transform: translateX(-120vw) rotate(-30deg) !important;
-  opacity: 0;
-}
-
-.swipe-card.empty {
-  background: var(--surface);
-  border-color: var(--surface-2);
-  color: var(--text-dim);
-  font-size: 15px;
-  font-weight: 400;
-  cursor: default;
-}
-
-.swipe-actions {
+.swipe-item-content {
+  position: relative;
   display: flex;
-  gap: 8px;
-  margin-top: 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface);
+  will-change: transform;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.swipe-item-content.returning {
+  transition: transform 0.25s ease, border-color 0.2s;
+}
+
+.swipe-item.worked .swipe-item-content {
+  border-left-color: var(--warn);
+}
+
+.swipe-item-text {
+  flex: 1;
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.swipe-item-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+  background: rgba(245, 166, 35, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
-.swipe-actions .btn { flex: 1; text-align: center; }
-
-.swipe-progress {
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-top: 8px;
+.swipe-done-btn {
   flex-shrink: 0;
+  margin-top: 12px;
+  width: 100%;
+  text-align: center;
 }
 
 /* ===== History ===== */
@@ -363,6 +368,7 @@ textarea {
   border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 8px;
+  position: relative;
 }
 
 .session-header {
@@ -370,17 +376,11 @@ textarea {
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 8px;
+  padding-right: 28px;
 }
 
-.session-date {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.session-duration {
-  font-size: 13px;
-  color: var(--text-dim);
-}
+.session-date { font-size: 14px; font-weight: 600; }
+.session-duration { font-size: 13px; color: var(--text-dim); }
 
 .session-summary {
   font-size: 13px;
@@ -388,6 +388,8 @@ textarea {
   line-height: 1.5;
   margin-bottom: 8px;
 }
+
+.session-tags { margin-bottom: 8px; }
 
 .session-tag {
   display: inline-block;
@@ -425,6 +427,27 @@ textarea {
 .session-note::placeholder { color: var(--text-muted); }
 .session-note:focus { border-color: var(--accent); }
 
+.session-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+
+.session-delete:active {
+  background: var(--surface-2);
+  color: var(--error);
+}
+
 /* ===== Archive ===== */
 .archive-list { flex: 1; overflow-y: auto; min-height: 0; }
 
@@ -438,11 +461,7 @@ textarea {
   margin-bottom: 6px;
 }
 
-.archive-item-text {
-  font-size: 15px;
-  flex: 1;
-  word-break: break-word;
-}
+.archive-item-text { font-size: 15px; flex: 1; word-break: break-word; }
 
 .archive-item-date {
   font-size: 12px;
@@ -487,6 +506,7 @@ textarea {
   font-size: 15px;
   line-height: 1.6;
   margin-bottom: 8px;
+  word-break: break-word;
 }
 
 .dialog-actions {
@@ -496,6 +516,45 @@ textarea {
 }
 
 .dialog-actions .btn { flex: 1; }
+
+/* ===== Undo Toast ===== */
+.undo-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-2);
+  border: 1px solid var(--surface-3);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 90;
+  max-width: 400px;
+  font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  animation: toastIn 0.25s ease;
+}
+
+.undo-toast.hidden { display: none; }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.undo-btn {
+  background: transparent;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.undo-btn:active { opacity: 0.6; }
 
 /* ===== Utilities ===== */
 .hidden { display: none !important; }
