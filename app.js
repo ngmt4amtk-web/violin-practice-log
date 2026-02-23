@@ -474,23 +474,43 @@ function renderHistory() {
     const card = document.createElement('div');
     card.className = 'session-card';
 
-    const completedTags = (session.completed || []).map(pid =>
-      `<span class="session-tag completed">${esc(getItemName(pid))}</span>`
-    ).join('');
+    let tagsHtml = '';
 
-    const workedTags = (session.workedOn || []).map(pid =>
-      `<span class="session-tag worked">${esc(getItemName(pid))}</span>`
-    ).join('');
+    if ((session.completed || []).length > 0) {
+      const tags = session.completed.map(pid =>
+        `<span class="session-tag completed">${esc(getItemName(pid))}</span>`
+      ).join('');
+      tagsHtml += `
+        <div class="session-group">
+          <div class="session-group-label completed">✓ 完了</div>
+          <div class="session-tags">${tags}</div>
+        </div>`;
+    }
+
+    if ((session.workedOn || []).length > 0) {
+      const tags = session.workedOn.map(pid =>
+        `<span class="session-tag worked">${esc(getItemName(pid))}</span>`
+      ).join('');
+      tagsHtml += `
+        <div class="session-group">
+          <div class="session-group-label worked">→ 取り組んだ</div>
+          <div class="session-tags">${tags}</div>
+        </div>`;
+    }
+
+    const shareIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
 
     card.innerHTML = `
       <div class="session-header">
         <span class="session-date">${formatDate(session.startedAt)}</span>
         <span class="session-duration">${formatDuration(session.duration)}</span>
       </div>
-      <div class="session-summary">${buildSummary(session)}</div>
-      <div class="session-tags">${completedTags}${workedTags}</div>
+      ${tagsHtml}
       <textarea class="session-note" placeholder="メモ" rows="1"
         data-session-id="${escAttr(session.id)}">${esc(session.note || '')}</textarea>
+      <div class="session-actions-row">
+        <button class="session-share" data-session-id="${escAttr(session.id)}">${shareIcon} 共有</button>
+      </div>
       <button class="session-delete" data-session-id="${escAttr(session.id)}">&times;</button>
     `;
 
@@ -517,6 +537,39 @@ function buildSummary(session) {
   return parts.length === 0 ? '記録のみ' : parts.join('、');
 }
 
+function shareSession(id) {
+  const session = data.sessions.find(s => s.id === id);
+  if (!session) return;
+
+  let text = `🎻 練習記録 ${formatDate(session.startedAt)}\n`;
+  text += `⏱ ${formatDuration(session.duration)}\n`;
+
+  if ((session.completed || []).length > 0) {
+    text += `\n✓ 完了:\n`;
+    session.completed.forEach(pid => { text += `  ${getItemName(pid)}\n`; });
+  }
+  if ((session.workedOn || []).length > 0) {
+    text += `\n→ 取り組んだ:\n`;
+    session.workedOn.forEach(pid => { text += `  ${getItemName(pid)}\n`; });
+  }
+  if (session.note) {
+    text += `\n📝 ${session.note}\n`;
+  }
+
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    showUndo('クリップボードにコピーしました', () => {});
+  }).catch(() => {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea');
+    ta.value = text.trim();
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showUndo('クリップボードにコピーしました', () => {});
+  });
+}
+
 function deleteSession(id) {
   showConfirm('このセッションを削除しますか？', () => {
     data.sessions = data.sessions.filter(s => s.id !== id);
@@ -530,22 +583,56 @@ function renderArchive() {
   const list = dom.archiveList;
   list.innerHTML = '';
 
-  if (data.archive.length === 0) {
+  const workedItems = data.pool.filter(p => (p.workedCount || 0) > 0);
+  const hasCompleted = data.archive.length > 0;
+  const hasWorked = workedItems.length > 0;
+
+  if (!hasCompleted && !hasWorked) {
     dom.archiveEmpty.classList.remove('hidden');
     return;
   }
 
   dom.archiveEmpty.classList.add('hidden');
 
-  [...data.archive].reverse().forEach(item => {
-    const el = document.createElement('div');
-    el.className = 'archive-item';
-    el.innerHTML = `
-      <span class="archive-item-text">${esc(item.text)}</span>
-      <span class="archive-item-date">${formatShortDate(item.completedAt)}</span>
-    `;
-    list.appendChild(el);
-  });
+  // Worked-on section (still in pool)
+  if (hasWorked) {
+    const label = document.createElement('div');
+    label.className = 'archive-section-label worked';
+    label.textContent = `→ 取り組み中（${workedItems.length}）`;
+    list.appendChild(label);
+
+    workedItems.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'archive-item worked';
+      el.innerHTML = `
+        <span class="archive-item-text">${esc(item.text)}</span>
+        <div class="archive-item-meta">
+          <span class="archive-item-count">${item.workedCount}回</span>
+        </div>
+      `;
+      list.appendChild(el);
+    });
+  }
+
+  // Completed section
+  if (hasCompleted) {
+    const label = document.createElement('div');
+    label.className = 'archive-section-label completed';
+    label.textContent = `✓ 完了（${data.archive.length}）`;
+    list.appendChild(label);
+
+    [...data.archive].reverse().forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'archive-item completed';
+      el.innerHTML = `
+        <span class="archive-item-text">${esc(item.text)}</span>
+        <div class="archive-item-meta">
+          <span class="archive-item-date">${formatShortDate(item.completedAt)}</span>
+        </div>
+      `;
+      list.appendChild(el);
+    });
+  }
 }
 
 /* ===== Export / Import ===== */
@@ -677,8 +764,10 @@ function bindEvents() {
   initSwipeGestures();
 
   dom.historyList.addEventListener('click', (e) => {
-    const btn = e.target.closest('.session-delete');
-    if (btn) deleteSession(btn.dataset.sessionId);
+    const delBtn = e.target.closest('.session-delete');
+    if (delBtn) { deleteSession(delBtn.dataset.sessionId); return; }
+    const shareBtn = e.target.closest('.session-share');
+    if (shareBtn) { shareSession(shareBtn.dataset.sessionId); return; }
   });
 
   dom.exportBtn.addEventListener('click', exportData);
